@@ -1,4 +1,5 @@
 import { useContext, createContext, useState, ReactNode } from "react";
+import useAuthUtils from "../hooks/useAuthUtils";
 
 interface AuthContextType {
   isAuthenticated: boolean;
@@ -21,7 +22,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [user, setUser] = useState<any[] | null>(null);
   const [token, setToken] = useState<string | null>(null);
-
+  const { signChallenge } = useAuthUtils();
+  
   const login = async (email: string | undefined) => {
     if (!localStorage.getItem("privateKey")) {
       return alert("no private key, please register first");
@@ -119,30 +121,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
     );
 
     return { publicKeyPem, privateKeyPem };
-  };
-
-  const signChallenge = async (privateKeyPem: any, challenge: string) => {
-    const binaryKey = Uint8Array.from(atob(privateKeyPem), (c) =>
-      c.charCodeAt(0)
-    );
-
-    const importedKey = await window.crypto.subtle.importKey(
-      "pkcs8",
-      binaryKey,
-      { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
-      false,
-      ["sign"]
-    );
-
-    const encodedChallenge = new TextEncoder().encode(challenge);
-
-    const signature = await window.crypto.subtle.sign(
-      "RSASSA-PKCS1-v1_5",
-      importedKey,
-      encodedChallenge
-    );
-
-    return btoa(String.fromCharCode(...new Uint8Array(signature)));
   };
 
   const logout = () => {
