@@ -1,12 +1,22 @@
-import expressAsycHandler from "express-async-handler";
-import generateChallange from "../utils/challenge.js";
+import expressAsyncHandler from "express-async-handler";
+import {
+  generateChallenge,
+  generateToken,
+  generateKeypair,
+  verifyChallenge,
+} from "../utils/security.js";
 import { v4 as uuidv4 } from "uuid";
-import jwt from "jsonwebtoken";
+import {
+  createUser,
+  getUser,
+  updateUser as serviceUpdateUser,
+} from "../services/userService.js";
+import crypto from "crypto";
 
 //add to dynamo later
 let users = {};
 
-export const getUsers = expressAsycHandler(async (req, res) => {
+export const getUsers = expressAsyncHandler(async (req, res) => {
   try {
     res.status(200).json(users);
   } catch (error) {
@@ -14,22 +24,20 @@ export const getUsers = expressAsycHandler(async (req, res) => {
   }
 });
 
-export const registerUser = expressAsycHandler(async (req, res) => {
+export const registerUser = expressAsyncHandler(async (req, res) => {
   try {
-    const { email } = req.body;
+    const { email, publicKey } = req.body;
 
     if (!email) {
       res.status(400).json({ message: "User email required" });
     }
 
-    const challenge = generateChallange();
     const userId = uuidv4();
 
-    users[email] = { challenge, userId };
-
+    const user = { email, userId, publicKey };
+    createUser(user);
     res.json({
       userId,
-      challenge,
       rp: { name: "Blockchain voting app" },
       user: { id: Buffer.from(userId).toString("base64url") },
       name: email,
@@ -48,7 +56,7 @@ export const registerUser = expressAsycHandler(async (req, res) => {
   }
 });
 
-export const updateUser = expressAsycHandler(async (req, res) => {
+export const updateUser = expressAsyncHandler(async (req, res) => {
   try {
   } catch (error) {
     console.error(error);
@@ -56,7 +64,7 @@ export const updateUser = expressAsycHandler(async (req, res) => {
   }
 });
 
-export const deleteUser = expressAsycHandler(async (req, res) => {
+export const deleteUser = expressAsyncHandler(async (req, res) => {
   try {
   } catch (error) {
     console.error(error);
@@ -64,20 +72,18 @@ export const deleteUser = expressAsycHandler(async (req, res) => {
   }
 });
 
-export const authUser = expressAsycHandler(async (req, res) => {
+export const authUser = expressAsyncHandler(async (req, res) => {
   try {
-    const { email, credential } = req.body;
-    console.log(req.body);
-    if (!email || !credential) {
+    const { email } = req.body;
+    if (!email) {
       res.status(400).json({ error: "Invalid request" });
     }
-    const user = users[email];
-
+    const user = await getUser(email);
     if (!user) {
       res.status(404).json({ error: "no user found" });
     }
-    const challenge = generateChallange();
-    user.challenge = challenge;
+    const challenge = generateChallenge();
+    serviceUpdateUser(user.userId, { challenge });
 
     res.status(200).json({ challenge });
   } catch (error) {
@@ -86,24 +92,36 @@ export const authUser = expressAsycHandler(async (req, res) => {
   }
 });
 
-export const verifyUser = expressAsycHandler(async (req, res) => {
+export const verifyUser = expressAsyncHandler(async (req, res) => {
   try {
-    const { email, credential } = req.body;
+    const { email, signedChallenge } = req.body;
 
-    if (!email || !credential) {
+    if (!email || !signedChallenge) {
       res.status(400).json({ error: "Invalid request" });
     }
-    const user = users[email];
+    //const user = getUser(email);
+    //const storedChallenge = user.challenge;
+    const user = await getUser(email);
 
     if (!user) {
       res.status(404).json({ error: "no user found" });
     }
+    const verifier = crypto.createVerify("SHA256");
+    verifier.update(user.challenge);
+    verifier.end();
 
-    const token = jwt.sign(
-      { userId: user.userId, email },
-      process.env.JWT_SECRET,
-      { expiresIn: "1h" }
+    const publicKeyPem = convertBase64ToPem(user.publicKey);
+
+    const isValid = verifier.verify(
+      publicKeyPem,
+      Buffer.from(signedChallenge, "base64")
     );
+
+    if (!isValid) {
+      return res.status(401).json({ error: "Not Authorized" });
+    }
+
+    const token = generateToken(user.userId);
 
     res.status(200).json({ message: "Authenticated", token });
   } catch (error) {
@@ -111,3 +129,10 @@ export const verifyUser = expressAsycHandler(async (req, res) => {
     res.status(500).json(error);
   }
 });
+
+function convertBase64ToPem(base64Key) {
+  const pemKey = `-----BEGIN PUBLIC KEY-----\n${base64Key
+    .match(/.{1,64}/g)
+    .join("\n")}\n-----END PUBLIC KEY-----`;
+  return pemKey;
+}
