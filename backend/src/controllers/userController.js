@@ -28,6 +28,16 @@ export const registerUser = expressAsyncHandler(async (req, res) => {
   try {
     const { email, publicKey } = req.body;
 
+    const whiteList = [
+      "chris.mealey@gmail.com",
+      "christiaan.mealey@gmail.com",
+      "maarten.venter@gmail.com",
+    ];
+
+    if (!whiteList.includes(email)) {
+      res.status(401).json({ message: "User not allowed" });
+    }
+
     if (!email) {
       res.status(400).json({ message: "User email required" });
     }
@@ -99,8 +109,6 @@ export const verifyUser = expressAsyncHandler(async (req, res) => {
     if (!email || !signedChallenge) {
       res.status(400).json({ error: "Invalid request" });
     }
-    //const user = getUser(email);
-    //const storedChallenge = user.challenge;
     const user = await getUser(email);
 
     if (!user) {

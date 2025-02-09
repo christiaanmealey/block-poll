@@ -22,29 +22,35 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [user, setUser] = useState<any[] | null>(null);
   const [token, setToken] = useState<string | null>(null);
-  const { signChallenge } = useAuthUtils();
-  
+  const {
+    signChallenge,
+    generateKeyPair,
+    savePrivateKeyToLocalStorage,
+    loadPrivateKeyFromLocalStorage,
+  } = useAuthUtils();
+
   const login = async (email: string | undefined) => {
-    if (!localStorage.getItem("privateKey")) {
-      return alert("no private key, please register first");
+    const privateKey = await loadPrivateKeyFromLocalStorage();
+    if (!privateKey) {
+      return alert("No private key, please register first");
     }
-    const privateKey = localStorage.getItem("privateKey");
     const challenge = await requestChallenge(email);
     const signedChallenge = await signChallenge(privateKey, challenge);
-    console.log(signedChallenge);
     const verified = await verifyChallenge(email, signedChallenge);
     return verified;
   };
 
   const register = async (email: string | undefined) => {
-    const { publicKeyPem } = await generateKeyPair();
+    const { publicKeyPem, privateKeyPem } = await generateKeyPair();
+    await savePrivateKeyToLocalStorage(privateKeyPem);
+
     const response = await fetch("http://localhost:5000/users/register", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email, publicKey: publicKeyPem }),
     });
+
     const result = await response.json();
-    console.log("publicKey", result.publicKey);
     localStorage.setItem("publicKey", result.publicKey);
     return result;
   };
@@ -76,51 +82,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
       setUser(result.user);
       localStorage.setItem("token", result.token);
     } else {
-      console.log("verification failed");
+      console.log("Verification failed");
     }
     return result;
-  };
-
-  const generateKeyPair = async () => {
-    const keyPair = await window.crypto.subtle.generateKey(
-      {
-        name: "RSASSA-PKCS1-v1_5",
-        modulusLength: 2048,
-        publicExponent: new Uint8Array([1, 0, 1]),
-        hash: "SHA-256",
-      },
-      true,
-      ["sign", "verify"]
-    );
-
-    const exportedPublicKey = await window.crypto.subtle.exportKey(
-      "spki",
-      keyPair.publicKey
-    );
-
-    const publicKeyPem = btoa(
-      String.fromCharCode(...new Uint8Array(exportedPublicKey))
-    );
-
-    const exportedPrivateKey = await window.crypto.subtle.exportKey(
-      "pkcs8",
-      keyPair.privateKey
-    );
-
-    const privateKeyPem = btoa(
-      String.fromCharCode(...new Uint8Array(exportedPrivateKey))
-    );
-
-    localStorage.setItem(
-      "publickKey",
-      btoa(String.fromCharCode(...new Uint8Array(exportedPublicKey)))
-    );
-    localStorage.setItem(
-      "privateKey",
-      btoa(String.fromCharCode(...new Uint8Array(exportedPrivateKey)))
-    );
-
-    return { publicKeyPem, privateKeyPem };
   };
 
   const logout = () => {

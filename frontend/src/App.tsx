@@ -13,12 +13,20 @@ function App() {
 
   const loginUser = async () => {
     const email = emailRef.current?.value || undefined;
-    login(email);
+    if (email) {
+      login(email);
+    } else {
+      alert("Please enter your email address to continue.");
+    }
   };
 
   const registerUser = async () => {
     const email = emailRef.current?.value || undefined;
-    register(email);
+    if (email) {
+      register(email);
+    } else {
+      alert("Please enter your email address to continue.");
+    }
   };
   return (
     <>
